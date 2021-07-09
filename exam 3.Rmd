@@ -1,0 +1,153 @@
+---
+title: "Exam 3"
+author: "Aakansha Bagepally"
+date: "07/08/21"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+#clear the environment
+rm(list = ls(all = TRUE))
+
+#load packages
+library(tidyverse)
+library(ggplot2)
+library(rio)
+library(WDI)
+library(googlesheets4)
+library(labelled)
+library(data.table)
+library(varhandle)
+library(ggrepel)
+library(geosphere)
+library(rgeos)
+library(viridis)
+library(devtools)
+library(remotes)
+library(raster)
+library(sp)
+library(Imap)
+library(devtools)
+library(sf)
+library(rnaturalearthhires)
+library(mapview)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(ggsflabel)
+```
+
+```{r}
+#load data
+female_lfp = WDI(country="all", indicator="SL.TLF.CACT.FE.ZS", start=2010, end=2015, extra=FALSE, cache=NULL)
+
+#renaming to flfp
+female_lfp = female_lfp %>% rename(flfp = SL.TLF.CACT.FE.ZS)
+
+#collapsing flfp by mean by country
+collapsed_flfp = female_lfp %>% group_by(country) %>% summarize(mean_flfp = mean(flfp, na.rm = TRUE), iso2c = iso2c)
+
+#coutries with flfp % under 15 during 2010-2015
+under_15 = collapsed_flfp %>% filter(mean_flfp < 15)
+under_15
+
+#map of collapsed data
+world_borders = st_read("World_Borders.shx",stringsAsFactors=FALSE)
+borders = st_transform(world_borders, "+proj=longlat +ellps=WGS84 +datum=WGS84")
+rm(world_borders)
+world <-ne_countries(scale = "large", returnclass = "sf")
+world = rename(world, iso2c = iso_a2)
+setnames(borders, "ISO2", "iso2c")
+merge_data = left_join(borders, collapsed_flfp, by = "iso2c")
+merge_data = st_sf(merge_data)
+flfp_map = ggplot() + geom_sf(data = world) +
+  geom_sf(data = merge_data, aes(fill=mean_flfp)) +
+  scale_fill_viridis(option = "viridis") +
+  ggtitle("Female Labor Force Participation (mean), 2010-2015")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme_void()
+flfp_map
+```
+The map displayed above shows that some countries in the South of Africa have, perhaps surprisingly, high percentages of female labor force participation (shown in yellow).
+
+```{r}
+#Mapping Africa
+
+africa <-ne_countries(continent ='africa',scale = "large",returnclass = "sf")
+africa_data <- subset(merge_data, country == "Namibia"|
+                      country=="Tanzania"|
+                      country=="Madagascar"|country=="Botswana"|
+                      country=="Zimbabwe"|country=="Angola"|
+                      country=="Malawi"|country=="Zambia"|
+                      country=="Mozambique"|country=="Eswatini"|
+                      country=="South Africa"|country=="Republic of the Congo")
+africa_map = ggplot() + geom_sf(data=africa) + geom_sf(data=africa_data, aes(fill=mean_flfp))+
+  scale_fill_viridis(option="viridis") +theme_void()
+africa_map
+```
+A Shiny app has 3 main components: a UI, a server, execution with code. UI requires input and output, a server needs code to direct and use fucntions to output.
+
+```{r}
+#pulling and converting pdf
+library(pdftools)
+library(tidytext)
+library(stringr)
+library(tidyr)
+pdf_USAID = pdf_text(pdf = "https://pdf.usaid.gov/pdf_docs/PA00TNMJ.pdf")
+armeniatext = as.data.frame(pdf_USAID, stringsAsFactors=FALSE)
+
+#tokenize and remove stop words
+armeniatext <- armeniatext %>% unnest_tokens(word, pdf_USAID)
+data(stop_words)
+armeniatext <- armeniatext %>%anti_join(stop_words)
+
+#top five most used words
+armenia_5 <- armeniatext %>% count(word, sort = TRUE)
+print(armenia_5[1:5,])
+```
+
+```{r}
+#loading Billboard Hot 100
+library(rvest)
+library(xml2)
+library(rio)
+hot100exam <-read_html("https://www.billboard.com/charts/hot-100")
+
+#identify nodes
+body_nodes <- hot100exam %>%
+  html_node("body") %>% html_children()
+
+#pulling rank, artist, title, and last week
+rank = hot100exam %>%
+  rvest::html_nodes('body') %>%
+  xml2::xml_find_all("//span[contains(@class,                
+                     'chart-element__rank__number')]") %>%
+  rvest::html_text()
+
+artist <-hot100exam %>%
+  rvest::html_nodes('body') %>%
+  xml2::xml_find_all("//span[contains(@class,
+                     'chart-element__information__artist')]") %>%
+  rvest::html_text()
+
+title <-hot100exam %>% 
+  rvest::html_nodes('body') %>%
+  xml2::xml_find_all("//span[contains(@class,
+                     'chart-element__information__song')]") %>%
+  rvest::html_text()
+
+lastweek <-hot100exam %>% 
+  rvest::html_nodes('body') %>%
+  xml2::xml_find_all("//span[contains(@class,
+                     'chart-element__meta text--center color--secondary text--last')]") %>%
+  rvest::html_text()
+
+hot100dataframe <- data.frame(rank, artist, title, lastweek)
+export(hot100dataframe, "hot100exam.dta")
+```
+
+link to Git Repo: https://github.com/akshab/exam3
